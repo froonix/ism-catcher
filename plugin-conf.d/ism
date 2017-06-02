@@ -1,0 +1,11 @@
+[ism]
+
+### Local user and/or group to execute this plugin
+#group <LOCALGROUPNAME>
+user <LOCALUSERNAME>
+
+### Recommended: Full path to INI file (if not in same directory)
+env.ini_file <CONFIG>
+
+### Optional: Virtual hostname (special Munin setup required!)
+#env.hostname <VHOST>

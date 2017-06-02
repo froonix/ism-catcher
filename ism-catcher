@@ -1,0 +1,869 @@
+#!/usr/bin/env php
+<?php
+
+if(version_compare(PHP_VERSION, '5.5.0', '<'))
+{
+	print("PHP 5.5.0 or newer is required!\n");
+	exit(1);
+}
+else if(php_sapi_name() != 'cli')
+{
+	print("Please execute this script via CLI!\n");
+	exit(1);
+}
+
+set_error_handler('exception_error_handler');
+error_reporting(-1); setlocale(LC_ALL, 'C');
+$opt = getopt('hc:', ['help', 'config:', 'live', 'dump:']);
+
+if(isset($opt['h']) || isset($opt['help']))
+{
+	$cmd = basename($_SERVER['argv'][0]);
+	print("Program to parse the output of rtl_433.\n");
+	print("It's designed to work as Munin plugin.\n\n");
+	printf("Usage: %s [--config=<INI>] --live\n", $cmd);
+	print("       Parse JSON from STDIN, one dataset per line!\n\n");
+	printf("Usage: %s [--config=<INI>] --dump=<ID>\n", $cmd);
+	print("       Dump packets of binary database <ID>.\n\n");
+	printf("Usage: %s [--config=<INI>] [{autoconf|config}]\n", $cmd);
+	print("       Execute Munin plugin with optional arguments.\n\n");
+	print("=========================\n");
+	print(" Supported ENV variables \n");
+	print("=========================\n\n");
+	print(" * hostname = virtual hostname for munin\n");
+	print(" * ini_file = path to configuration file\n\n");
+	print("/-------------------------------------------------\\\n");
+	print("| License: GNU General Public License v3.0        |\n");
+	print("| Author:  Christian Schroetter <cs@fnx.li>       |\n");
+	print("| Website: https://github.com/froonix/ism-catcher |\n");
+	print("\\-------------------------------------------------/\n");
+	exit;
+}
+
+if(isset($opt['c']))
+{
+	ISM::setINI($opt['c']);
+}
+else if(isset($opt['config']))
+{
+	ISM::setINI($opt['config']);
+}
+else if(isset($_SERVER['ini_file']))
+{
+	ISM::setINI($_SERVER['ini_file']);
+}
+else if(isset($_SERVER['HOME']) && file_exists($_SERVER['HOME'] . '/.ism.ini'))
+{
+	ISM::setINI($_SERVER['HOME'] . '/.ism.ini');
+}
+else if(file_exists(__dir__ . '/ism.ini'))
+{
+	ISM::setINI(__dir__ . '/ism.ini');
+}
+else if(file_exists(__dir__ . '/config.ini'))
+{
+	ISM::setINI(__dir__ . '/config.ini');
+}
+else
+{
+	throw new Exception('INI file not found');
+}
+
+$arg = null;
+if(isset($opt['dump']))
+{
+	$mode = 'dump';
+	$arg = $opt['dump'];
+}
+else if(isset($opt['live']))
+{
+	$mode = 'live';
+}
+else
+{
+	// Stupid and bad workaround for PHP 5.x...
+	$mode = strtolower(array_pop($_SERVER['argv']));
+
+	switch($mode)
+	{
+		case 'autoconf':
+			print("no\n");
+			return 0;
+			break;
+
+		case 'config':
+			break;
+
+		default:
+			$mode = null;
+			break;
+	}
+}
+
+$return = ISM::main($mode, $arg);
+exit($return);
+
+function exception_error_handler($severity, $message, $file, $line)
+{
+	if (!(error_reporting() & $severity))
+	{
+		return;
+	}
+
+	throw new ErrorException($message, 0, $severity, $file, $line);
+}
+
+abstract class ISM
+{
+	const PACKET_LIMIT     = 100;
+	const MUNIN_INTERVAL   = 300;
+	const BUFFER_SIZE      = 1024;
+	const TEMPLATE_DB      = '%s/ism-%s.db';
+	const LOWBATT_WARNING  = 'LOW BATTERY';
+
+	// Bit identifiers
+	const FLAG_NONE        = 0;
+	const FLAG_LOWBATT     = 1;
+
+	// Default INI values
+	const DEFAULT_TITLE    = 'ISM';
+	const DEFAULT_CATEGORY = 'sensors';
+	const DEFAULT_INFO     = 'rtl_433';
+	const DEFAULT_VLABEL   = '';
+
+	private static $cfg = null;
+	private static $ini = null;
+
+	public static function main($mode, $arg)
+	{
+		self::parseINI();
+
+		switch($mode)
+		{
+			case 'live':
+				return self::procRTL();
+				break;
+
+			case 'dump':
+				return self::dumpDB($arg);
+				break;
+
+			case 'config':
+				return self::procMunin(true);
+				break;
+
+			default:
+				return self::procMunin();
+				break;
+		}
+
+		return -1;
+	}
+
+	public static function setINI($file)
+	{
+		self::$cfg = $file;
+	}
+
+	private static function parseINI()
+	{
+		if((self::$ini = parse_ini_file(self::$cfg, true, INI_SCANNER_RAW)) === false)
+		{
+			throw new Exception(sprintf('Could not open or parse INI file %s', self::$cfg));
+		}
+	}
+
+	private static function openDB($id, $readonly = true, $create = false)
+	{
+		if(!isset(self::$ini['datadir']))
+		{
+			self::$ini['datadir'] = sys_get_temp_dir();
+		}
+
+		return new ISMDB(sprintf(self::TEMPLATE_DB, self::$ini['datadir'], md5(strtolower($id))), $readonly, $create);
+	}
+
+	private static function cleanField($str)
+	{
+		return preg_replace('/_{2,}/', '_', preg_replace('/[^a-z0-9_]+/', '_', strtolower($str)));
+	}
+
+	private static function cleanLine($str)
+	{
+		return str_replace(["\r", "\n"], '', $str);
+	}
+
+	private static function outputLine($key, $value, $_ = null)
+	{
+		$key = ($_ !== null) ? sprintf('%s.%s', self::cleanField($_), self::cleanField($key)) : $key;
+		$value = self::cleanLine($value);
+
+		printf("%s %s\n", $key, $value);
+	}
+
+	private static function procMunin($config = false)
+	{
+		if($config)
+		{
+			if(isset($_SERVER['hostname']))
+			{
+				self::outputLine('host_name', $_SERVER['hostname']);
+			}
+
+			if(!isset(self::$ini['title']))
+			{
+				self::$ini['title'] = self::DEFAULT_TITLE;
+			}
+
+			if(!isset(self::$ini['category']))
+			{
+				self::$ini['category'] = self::DEFAULT_CATEGORY;
+			}
+
+			if(!isset(self::$ini['vlabel']))
+			{
+				self::$ini['vlabel'] = self::DEFAULT_VLABEL;
+			}
+
+			if(!isset(self::$ini['info']))
+			{
+				self::$ini['info'] = self::DEFAULT_INFO;
+			}
+
+			self::outputLine('graph_title', self::$ini['title']);
+			self::outputLine('graph_category', self::$ini['category']);
+			self::outputLine('graph_vlabel', self::$ini['vlabel']);
+			self::outputLine('graph_info', self::$ini['info']);
+			self::outputLine('graph_scale', 'no');
+
+			$args = ['--base 1000'];
+
+			if(isset(self::$ini['highest']))
+			{
+				$args[] = sprintf('-u %f', self::$ini['highest']);
+			}
+
+			if(isset(self::$ini['lowest']))
+			{
+				$args[] = sprintf('-l %f', self::$ini['lowest']);
+			}
+
+			self::outputLine('graph_args', implode(' ', $args));
+		}
+		else if(!isset(self::$ini['interval']) || self::$ini['interval'] < 30)
+		{
+			self::$ini['interval'] = self::MUNIN_INTERVAL;
+		}
+		else
+		{
+			self::$ini['interval'] = (int) self::$ini['interval'];
+		}
+
+		$base = false;
+		foreach(self::$ini as $section => $data)
+		{
+			if(!is_array($data))
+			{
+				continue;
+			}
+
+			if($config)
+			{
+				if(!isset($data['LABEL']))
+				{
+					$data['LABEL'] = $section;
+				}
+
+				self::outputLine('label', $data['LABEL'], $section);
+
+				if(isset($data['COLOUR']))
+				{
+					self::outputLine('colour', sprintf('COLOUR%d', $data['COLOUR']), $section);
+				}
+
+				if(isset($data['LINE']))
+				{
+					self::outputLine('draw', sprintf('LINE%d', $data['LINE']), $section);
+				}
+
+				if(isset($data['INFO']))
+				{
+					self::outputLine('info', $data['INFO'], $section);
+				}
+
+				if(isset($data['CRITICAL']))
+				{
+					self::outputLine('critical', $data['CRITICAL'], $section);
+				}
+
+				if(isset($data['WARNING']))
+				{
+					self::outputLine('warning', $data['WARNING'], $section);
+				}
+
+				if(isset($data['GRAPH']) && in_array(strtolower($data['GRAPH']), ['0', 'false', 'off', 'no']))
+				{
+					self::outputLine('graph', 'no', $section);
+				}
+				else if(!$base && isset(self::$ini['base']))
+				{
+					self::outputLine('line', self::$ini['base'], $section);
+					$base = true;
+				}
+			}
+			else
+			{
+				unset($db);
+				$db = self::openDB($section);
+
+				if($db->getPacketCount())
+				{
+					$item = $db->getPacket(-1);
+
+					if($item[ISMDB::FIELD_TIME] < (intval(time() / self::$ini['interval']) - 1) * self::$ini['interval'])
+					{
+						continue;
+					}
+
+					self::outputLine('value', $item[ISMDB::FIELD_VALUE], $section);
+
+					// TODO: Implement INI switch to output last update time?
+					#self::outputLine('extinfo', date('c', $item[ISMDB::FIELD_TIME]), $section);
+
+					if($item[ISMDB::FIELD_FLAGS] & self::FLAG_LOWBATT)
+					{
+						self::outputLine('extinfo', self::LOWBATT_WARNING, $section);
+					}
+				}
+			}
+		}
+		unset($section, $data, $db);
+
+		return 0;
+	}
+
+	private static function procRTL($handle = STDIN)
+	{
+		if(!isset(self::$ini['dbcleanup']))
+		{
+			self::$ini['dbcleanup'] = self::PACKET_LIMIT;
+		}
+		else
+		{
+			self::$ini['dbcleanup'] = abs((int) self::$ini['dbcleanup']);
+		}
+
+		while(!feof($handle))
+		{
+			if(($line = fgets($handle, self::BUFFER_SIZE)) === false)
+			{
+				if(feof($handle))
+				{
+					return 0;
+				}
+
+				throw new Exception('Could not read next line but EOF not reached');
+			}
+
+			$line = trim($line);
+
+			if(empty($line))
+			{
+				continue;
+			}
+			else if(!($json = json_decode($line, true)))
+			{
+				throw new Exception(sprintf('Could not parse JSON: %s', $line));
+			}
+
+			foreach($json as $key => $value)
+			{
+				unset($json[$key]);
+				$json[strtolower($key)] = (string) $value;
+			}
+			unset($key, $value);
+
+			foreach(self::$ini as $section => $data)
+			{
+				if(!is_array($data))
+				{
+					continue;
+				}
+
+				foreach($data as $key => $value)
+				{
+					if(preg_match('/^[a-z0-9_]+$/', $key))
+					{
+						if(!isset($json[$key]) || $value !== $json[$key])
+						{
+							continue 2;
+						}
+					}
+				}
+				unset($key, $value);
+
+				if(!isset($data['SOURCE']))
+				{
+					$data['SOURCE'] = 'temperature_c';
+				}
+				else
+				{
+					$data['SOURCE'] = strtolower($data['SOURCE']);
+				}
+
+				if(!isset($json[$data['SOURCE']]))
+				{
+					continue;
+				}
+
+				$item = [
+					ISMDB::FIELD_TIME => strtotime($json['time']),
+					ISMDB::FIELD_VALUE => $json[$data['SOURCE']],
+					ISMDB::FIELD_FLAGS => self::FLAG_NONE,
+				];
+
+				if(isset($json['battery']) && strtoupper($json['battery']) == 'LOW')
+				{
+					$item[ISMDB::FIELD_FLAGS] |= self::FLAG_LOWBATT;
+				}
+
+				$db = self::openDB($section, false, true);
+				$db->cleanUp(-self::$ini['dbcleanup']);
+				$db->putPacket($item);
+				unset($db, $item);
+
+				if(!isset($data['FINAL']) || !in_array(strtolower($data['FINAL']), ['0', 'false', 'off', 'no']))
+				{
+					break;
+				}
+			}
+			unset($section, $data);
+		}
+
+		return 0;
+	}
+
+	private static function dumpDB($id)
+	{
+		$db = self::openDB($id);
+
+		for($i = 0; $i < $db->getPacketCount(); $i++)
+		{
+			$data = $db->getPacketByIndex($i);
+			printf("[%s] %11s (0x%04X)\n", date('c', $data[ISMDB::FIELD_TIME]), number_format($data[ISMDB::FIELD_VALUE], ISMDB::DECIMALS, '.', ''), $data[ISMDB::FIELD_FLAGS]);
+		}
+
+		return 0;
+	}
+}
+
+# -------------------------------------------------------------------- #
+# Don't leave a database open forever, because it will be locked!      #
+# This class exists only for short and exclusive read/write calls.     #
+# Just destroy it after usage to unlock the real database file...      #
+#                                                                      #
+# And yes, this dataformat is extreme overkill, but it's funny! :-)    #
+# -------------------------------------------------------------------- #
+class ISMDB
+{
+	// Database format
+	const DBVERSION   =   1;
+	const HEADERSIZE  =   2;
+	const PACKETSIZE  =  10;
+
+	// Decimal precision
+	const DECIMALS    =   3;
+
+	// Data array keys
+	const FIELD_FLAGS = 0;
+	const FIELD_TIME  = 1;
+	const FIELD_VALUE = 2;
+
+	private $ro      = null;
+	private $handle  = null;
+	private $init    = false;
+	private $version = self::DBVERSION;
+	private $flags   = 0;
+
+	public function __construct($file, $readonly = true, $create = true)
+	{
+		if(!file_exists($file) || filesize($file) < 2)
+		{
+			if(!$create && !file_exists($file))
+			{
+				throw new Exception('Database does not exist');
+			}
+
+			file_put_contents($file, $this->buildHeader());
+			clearstatcache(false, $file);
+		}
+
+		if($readonly)
+		{
+			$this->ro = true;
+			$lock = LOCK_SH;
+			$mode = 'rb';
+		}
+		else
+		{
+			$this->ro = false;
+			$lock = LOCK_EX;
+			$mode = 'r+b';
+		}
+
+		$this->handle = fopen($file, $mode);
+
+		if(!flock($this->handle, $lock))
+		{
+			throw new Exception(sprintf('Lock operation (%d) failed', $lock));
+		}
+
+		$this->readHeader();
+
+		if($this->version !== self::DBVERSION)
+		{
+			throw new Exception(sprintf('Unsupported DB version: %d', $this->version));
+		}
+		else if($this->flags)
+		{
+			throw new Exception(sprintf('Unsupported flags: 0x%02X', $this->flags));
+		}
+
+		try
+		{
+			$this->getPacketCount();
+		}
+		catch(Exception $e)
+		{
+			if($this->init)
+			{
+				throw $e;
+			}
+			else if(!$create)
+			{
+				throw new Exception('Database is damaged but recreation is forbidden');
+			}
+
+			$this->init = true; @unlink($file);
+			$this->__construct($file, $readonly, true);
+		}
+	}
+
+	public function __destruct()
+	{
+		try
+		{
+			flock($this->handle, LOCK_UN);
+			fclose($this->handle);
+			unset($this->handle);
+		}
+		catch(Exception $e)
+		{
+			return;
+		}
+	}
+
+	public function cleanUp($limit = 0)
+	{
+		if(($c = $this->getPacketCount()) > (abs($limit) * 1.5))
+		{
+			if($limit < 0)
+			{
+				$this->removePackets(-($c - abs($limit)));
+			}
+			else
+			{
+				$this->removePackets($limit);
+			}
+		}
+	}
+
+	public function removePacketByIndex($i)
+	{
+		return $this->removePackets(1, abs($i));
+	}
+
+	public function removePackets($num, $offset = 0)
+	{
+		$this->readOnlyCheck();
+
+		if(!$num)
+		{
+			throw new InvalidArgumentException('The packet selection can\'t be null');
+		}
+		else if($offset < 0)
+		{
+			throw new InvalidArgumentException('Negative offsets not supported');
+		}
+		else if((abs($num) + $offset) > ($c = $this->getPacketCount()))
+		{
+			throw new OutOfRangeException('Too many packets selected');
+		}
+
+		$this->seek();
+
+		if($num < 0)
+		{
+			if(!$offset)
+			{
+				if(!ftruncate($this->handle, self::HEADERSIZE + (self::PACKETSIZE * ($c - abs($num)))))
+				{
+					throw new Exception('Truncate operation failed');
+				}
+
+				return;
+			}
+
+			$start = self::HEADERSIZE + (self::PACKETSIZE * ($c - ($offset + abs($num))));
+		}
+		else
+		{
+			$start = self::HEADERSIZE + (self::PACKETSIZE * $offset);
+		}
+
+
+		$oldsize = self::HEADERSIZE + (self::PACKETSIZE * $c);
+		$length = self::PACKETSIZE * abs($num);
+		$last = ($oldsize - $start - $length);
+		$newsize = $start + $last;
+
+		$tmp = fopen('php://memory', 'w+b');
+
+		if(($_ = stream_copy_to_stream($this->handle, $tmp, $start)) < $start)
+		{
+			throw new Exception(sprintf('Memory operation #1 failed (only %d/%d bytes copied)', $_, $start));
+		}
+		else if(($_ = stream_copy_to_stream($this->handle, $tmp, $last, ($start + $length))) < $last)
+		{
+			throw new Exception(sprintf('Memory operation #2 failed (only %d/%d bytes copied)', $_, $last));
+		}
+		else if(fseek($tmp, 0) < 0)
+		{
+			throw new Exception('Memory operation #3 failed');
+		}
+
+		$this->seek();
+
+		if(($_ = stream_copy_to_stream($tmp, $this->handle)) < $newsize)
+		{
+			throw new Exception(sprintf('Memory operation #4 failed (only %d/%d bytes copied)', $_, $newsize));
+		}
+		else if(!ftruncate($this->handle, $newsize))
+		{
+			throw new Exception('Memory operation #5 failed');
+		}
+
+		fclose($tmp);
+	}
+
+	public function getPacketCount()
+	{
+		$this->seek(0, SEEK_END);
+		$l = ftell($this->handle);
+
+		if($l === false)
+		{
+			throw new Exception('Could not get pointer');
+		}
+		else if(($l - self::HEADERSIZE) % self::PACKETSIZE)
+		{
+			throw new Exception('File is corrupted');
+		}
+
+		return ($l - self::HEADERSIZE) / self::PACKETSIZE;
+	}
+
+	public function getPacketByIndex($i)
+	{
+		return $this->getPacket(abs($i) + 1);
+	}
+
+	public function getPacket($pos = -1)
+	{
+		if(!$pos)
+		{
+			throw new InvalidArgumentException('The packet position can\'t be null');
+		}
+		else if(abs($pos) > $this->getPacketCount())
+		{
+			throw new OutOfRangeException('Packet selection invalid');
+		}
+		else if($pos > 0)
+		{
+			$offset = self::HEADERSIZE + (self::PACKETSIZE * ($pos - 1));
+			$whence = SEEK_SET;
+		}
+		else
+		{
+			$offset = -(self::PACKETSIZE * (abs($pos) - 1));
+			$whence = SEEK_END;
+		}
+
+		$this->seekPacket($pos);
+		$data = $this->read();
+
+		$time = self::decodeInteger(substr($data, 2, 4));
+		$value = self::decodeFloat(substr($data, 6, 4));
+
+		$flags = self::decodeFlags($data[0] . $data[1]);
+		$flags = $flags[0] + ($flags[1] << 8);
+
+		return [
+			self::FIELD_FLAGS => $flags,
+			self::FIELD_TIME  => $time,
+			self::FIELD_VALUE => $value,
+		];
+	}
+
+	public function putPacket($data = null, $pos = 0)
+	{
+		$this->readOnlyCheck();
+
+		if($pos !== 0)
+		{
+			throw new Exception('This would overwrite an existing packet! Insert operations are not implemented yet...');
+		}
+
+		$time = (isset($data[self::FIELD_TIME])) ? $data[self::FIELD_TIME] : 0;
+		$value = (isset($data[self::FIELD_VALUE])) ? $data[self::FIELD_VALUE] : 0.0;
+
+		$flags = (isset($data[self::FIELD_FLAGS])) ? $data[self::FIELD_FLAGS] : 0;
+		$flagB = $flags >> 8; $flagA = $flags - ($flagB << 8);
+
+		$stream = self::encodeFlags($flagA, $flagB);
+		$stream .= self::encodeInteger($time);
+		$stream .= self::encodeFloat($value);
+
+		$this->seekPacket($pos);
+		$this->write($stream);
+	}
+
+	private function readOnlyCheck()
+	{
+		if($this->ro)
+		{
+			throw new LogicException('Operation not supported in read-only mode');
+		}
+	}
+
+	private function readHeader()
+	{
+		$this->seek();
+		$_ = self::decodeFlags($this->read(self::HEADERSIZE));
+		$this->version = $_[0]; $this->flags = $_[1];
+	}
+
+	private function buildHeader()
+	{
+		return self::encodeFlags($this->version, $this->flags);
+	}
+
+	private function seekPacket($pos = 0)
+	{
+		if(!$pos)
+		{
+			$offset = 0;
+			$whence = SEEK_END;
+		}
+		else if($pos > 0)
+		{
+			$offset = self::HEADERSIZE + (self::PACKETSIZE * ($pos - 1));
+			$whence = SEEK_SET;
+		}
+		else
+		{
+			$offset = -(self::PACKETSIZE * abs($pos));
+			$whence = SEEK_END;
+		}
+
+		$this->seek($offset, $whence);
+	}
+
+	private function seek($offset = 0, $whence = SEEK_SET)
+	{
+		if(fseek($this->handle, $offset, $whence) < 0)
+		{
+			throw new Exception('Seeking failed');
+		}
+	}
+
+	private function read($length = self::PACKETSIZE, $require = true)
+	{
+		if(($data = fread($this->handle, $length)) === false)
+		{
+			throw new Exception('Read operation failed');
+		}
+		else if($require && ($c = strlen($data)) < $length)
+		{
+			throw new Exception(sprintf('Short read (got only %d bytes)', $c));
+		}
+
+		return $data;
+	}
+
+	private function write($binary, $require = true)
+	{
+		if(($length = fwrite($this->handle, $binary)) === false)
+		{
+			throw new Exception('Write operation failed');
+		}
+		else if($require && $length < strlen($binary))
+		{
+			throw new Exception(sprintf('Short write (shed only %d bytes)', $length));
+		}
+	}
+
+	// Input: <long32_t> [, <precision>]
+	// Output: char[4]
+	private static function encodeFloat($float, $dec = self::DECIMALS)
+	{
+		return self::encodeInteger($float * pow(10, $dec));
+	}
+
+	// Input: <char[4]> [, <precision>]
+	// Output: long32_t
+	private static function decodeFloat($bin, $dec = self::DECIMALS)
+	{
+		return (self::decodeInteger($bin) / pow(10, $dec));
+	}
+
+	// Input: <char[4]>
+	// Output: int32_t
+	private static function encodeInteger($int)
+	{
+		return pack('l', $int);
+	}
+
+	// Input: <int32_t>
+	// Output: char[4]
+	private static function decodeInteger($bin)
+	{
+		return unpack('l', $bin)[1];
+	}
+
+	// Input: <uint8_t> [, <uint8_t>]
+	//        array(<uint8_t>, <uint8_t>)
+	// Output: char[2]
+	private static function encodeFlags($int, $flags = 0)
+	{
+		if(is_array($int) && count($int) > 1)
+		{
+			$flags = $int[1];
+			$int = $int[0];
+		}
+
+		return chr($int) . chr($flags);
+	}
+
+	// Input: <char[2]>
+	// Output: array(uint8_t, uint8_t)
+	private static function decodeFlags($bin)
+	{
+		$bin .= (strlen($bin) < 2) ? "\x00" : null;
+		$bin .= (strlen($bin) < 2) ? "\x00" : null;
+
+		return [ord($bin[0]), ord($bin[1])];
+	}
+}
+
+?>
