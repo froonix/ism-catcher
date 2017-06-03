@@ -6,28 +6,28 @@ case ${1:-} in
 		START=`date -d '- 1 day 00:00:01' '+%s'`
 		END=`date -d '- 1 day 23:59:59' '+%s'`
 		MESSAGE="Der gestrige Tag im Überblick…"
-		TITLE="(letzter Tag)"
+		TITLE="($(date -d @$START '+%d.%m.%Y'))"
 		COLOR="0066B3"
 		;;
 	"week")
 		START=`date -d 'last monday - 1 week 00:00:01' '+%s'`
 		END=`date -d 'last monday - 1 day 23:59:59' '+%s'`
 		MESSAGE="Die vergangene Woche im Überblick…"
-		TITLE="(letzte Woche)"
+		TITLE="(Woche $(date -d @$START '+%V / %Y'))"
 		COLOR="00CC00"
 		;;
 	"month")
 		START=`date -d "$(date -d "- 1 month" +%Y-%m-01) 00:00:01" '+%s'`
 		END=`date -d "- $(date +%d) days - 0 month 23:59:59" '+%s'`
 		MESSAGE="Der letzte Monat im Überblick…"
-		TITLE="(letzter Monat)"
+		TITLE="($(date -d @$START '+%B %Y'))"
 		COLOR="B30000"
 		;;
 	"year")
 		START=`date -d "$(date -d "- 1 year" +%Y-01-01) 00:00:01" '+%s'`
 		END=`date -d "$(date -d "- 1 year" +%Y-12-31) 23:59:59" '+%s'`
 		MESSAGE="Das letzte Jahr im Überblick…"
-		TITLE="(letztes Jahr)"
+		TITLE="($(date -d @$START '+%Y'))"
 		COLOR="FF8000"
 		;;
 	*)
