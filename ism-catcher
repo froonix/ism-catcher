@@ -278,9 +278,9 @@ abstract class ISM
 
 				if(isset($data['COLOUR']))
 				{
-					if(preg_match('/^[0-9A-F]{6}$/i', $data['COLOUR']))
+					if(preg_match('/^#?([0-9A-F]{6})$/i', $data['COLOUR'], $matches))
 					{
-						self::outputLine('colour', strtoupper($data['COLOUR']), $section);
+						self::outputLine('colour', strtoupper($matches[1]), $section);
 					}
 					else
 					{
