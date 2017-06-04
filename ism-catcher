@@ -313,8 +313,15 @@ abstract class ISM
 			}
 			else
 			{
-				unset($db);
-				$db = self::openDB($section);
+				try
+				{
+					unset($db);
+					$db = self::openDB($section);
+				}
+				catch(Exception $e)
+				{
+					continue;
+				}
 
 				if($db->getPacketCount())
 				{
