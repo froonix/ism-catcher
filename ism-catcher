@@ -286,7 +286,7 @@ abstract class ISM
 					{
 						$data['COLOUR'] = abs((int) $data['COLOUR']);
 						$data['COLOUR'] = ($data['COLOUR'] <= 28) ? $data['COLOUR'] : 0;
-						self::outputLine('colour', 'COLOUR%d' . $data['COLOUR'], $section);
+						self::outputLine('colour', 'COLOUR' . $data['COLOUR'], $section);
 					}
 				}
 
