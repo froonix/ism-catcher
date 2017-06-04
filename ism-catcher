@@ -278,7 +278,16 @@ abstract class ISM
 
 				if(isset($data['COLOUR']))
 				{
-					self::outputLine('colour', sprintf('COLOUR%d', $data['COLOUR']), $section);
+					if(preg_match('/^[0-9A-F]{6}$/i', $data['COLOUR']))
+					{
+						self::outputLine('colour', strtoupper($data['COLOUR']), $section);
+					}
+					else
+					{
+						$data['COLOUR'] = abs((int) $data['COLOUR']);
+						$data['COLOUR'] = ($data['COLOUR'] <= 28) ? $data['COLOUR'] : 0;
+						self::outputLine('colour', 'COLOUR%d' . $data['COLOUR'], $section);
+					}
 				}
 
 				if(isset($data['LINE']))
