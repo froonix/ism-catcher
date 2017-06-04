@@ -36,7 +36,7 @@ case ${1:-} in
 		;;
 esac
 
-WIDTH=720; HEIGHT=409
+WIDTH=720; HEIGHT=405
 ACCOUNT="__EXAMPLE__"
 FIELD="Name des Außensensors"
 HEADER="Temperaturverlauf $TITLE"
