@@ -10,8 +10,8 @@ case ${1:-} in
 		COLOR="0066B3"
 		;;
 	"week")
-		START=`date -d 'last monday - 1 week 00:00:01' '+%s'`
-		END=`date -d 'last monday - 1 day 23:59:59' '+%s'`
+		START=`date -d 'last week monday 00:00:01' '+%s'`
+		END=`date -d 'last week sunday 23:59:59' '+%s'`
 		MESSAGE="Die vergangene Woche im Überblick…"
 		TITLE="(Woche $(date -d @$START '+%V / %Y'))"
 		COLOR="00CC00"
