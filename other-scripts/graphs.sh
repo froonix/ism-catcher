@@ -1,39 +1,65 @@
 #!/bin/bash
 set -euf -o pipefail
 
+OFFSET="$(($(sed -r 's/[^0-9]+//' <<< "${2:-0}")))"
+if [[ "${3:-}" == "test" ]]; then DRY=1; else DRY=0; fi
+if [[ "${3:-}" == "graph" ]]; then GRAPH=1; else GRAPH=0; fi
+
 case ${1:-} in
+
 	"day")
-		START=`date -d '- 1 day 00:00:01' '+%s'`
-		END=`date -d '- 1 day 23:59:59' '+%s'`
-		MESSAGE="Der gestrige Tag im Überblick…"
+		START=`date -d "- $OFFSET days - 1 day 00:00:01" '+%s'`
+		END=`date -d "- $OFFSET days - 1 day 23:59:59" '+%s'`
 		TITLE="($(date -d @$START '+%d.%m.%Y'))"
 		COLOR="0066B3"
+
+		if [[ $OFFSET -eq 0 ]]
+		then MESSAGE="Der gestrige Tag im Überblick…"
+		else MESSAGE="Der $(date -d @$START '+%d.%m.%Y') im Überblick…"
+		fi
 		;;
+
 	"week")
-		START=`date -d 'last week monday 00:00:01' '+%s'`
-		END=`date -d 'last week sunday 23:59:59' '+%s'`
-		MESSAGE="Die vergangene Woche im Überblick…"
+		START=`date -d "- $OFFSET weeks last week monday 00:00:01" '+%s'`
+		END=`date -d "- $OFFSET weeks last week sunday 23:59:59" '+%s'`
 		TITLE="(Woche $(date -d @$START '+%V / %Y'))"
 		COLOR="00CC00"
+
+		if [[ $OFFSET -eq 0 ]]
+		then MESSAGE="Die vergangene Woche im Überblick…"
+		else MESSAGE="Die $(date -d @$START '+%V'). Woche vom Jahr $(date -d @$START '+%Y') im Überblick…"
+		fi
 		;;
+
 	"month")
-		START=`date -d "$(date -d "- 1 month" +%Y-%m-01) 00:00:01" '+%s'`
-		END=`date -d "- $(date +%d) days - 0 month 23:59:59" '+%s'`
-		MESSAGE="Der letzte Monat im Überblick…"
+		START=`date -d "$(date -d "- $OFFSET months - 1 month" +%Y-%m-01) 00:00:01" '+%s'`
+		END=`date -d "- $OFFSET months - $(date +%d) days - 0 month 23:59:59" '+%s'`
 		TITLE="($(date -d @$START '+%B %Y'))"
 		COLOR="B30000"
+
+		if [[ $OFFSET -eq 0 ]]
+		then MESSAGE="Der letzte Monat im Überblick…"
+		else MESSAGE="$(date -d @$START '+%B %Y') im Überblick…"
+		fi
 		;;
+
 	"year")
-		START=`date -d "$(date -d "- 1 year" +%Y-01-01) 00:00:01" '+%s'`
-		END=`date -d "$(date -d "- 1 year" +%Y-12-31) 23:59:59" '+%s'`
-		MESSAGE="Das letzte Jahr im Überblick…"
+		START=`date -d "$(date -d "- $OFFSET years - 1 year" +%Y-01-01) 00:00:01" '+%s'`
+		END=`date -d "$(date -d "- $OFFSET years - 1 year" +%Y-12-31) 23:59:59" '+%s'`
 		TITLE="($(date -d @$START '+%Y'))"
 		COLOR="FF8000"
+
+		if [[ $OFFSET -eq 0 ]]
+		then MESSAGE="Das letzte Jahr im Überblick…"
+		else MESSAGE="Das Jahr $(date -d @$START '+%Y') im Überblick…"
+		fi
 		;;
+
 	*)
-		echo "Usage: $0 {day|week|month|year}" >&2
+		echo "Usage: $0 {day|week|month|year} [<OFFSET> [{graph|test}]]" >&2
 		exit 3
 		;;
+
 esac
 
 WIDTH=720; HEIGHT=405
@@ -41,6 +67,15 @@ ACCOUNT="__EXAMPLE__"
 FIELD="Name des Außensensors"
 HEADER="Temperaturverlauf $TITLE"
 FOOTER="Twitter @${ACCOUNT}"
+
+if [[ $DRY -eq 1 ]]
+then
+	echo "Titel: $HEADER"
+	echo "Tweet: $MESSAGE"
+	echo "Start: $(date -d @$START +%c)"
+	echo "Ende:  $(date -d @$END +%c)"
+	exit
+fi
 
 TMPFILE=`tempfile`
 rrdtool graph "$TMPFILE" --imgformat PNG --width "$WIDTH" --height "$HEIGHT" \
@@ -58,6 +93,13 @@ rrdtool graph "$TMPFILE" --imgformat PNG --width "$WIDTH" --height "$HEIGHT" \
     'GPRINT:avg:AVERAGE:%.2lf%s' \
     'GPRINT:max:MAX:%.2lf%s\j' \
     'COMMENT:\r' >/dev/null
+
+if [[ $GRAPH -eq 1 ]]
+then
+	mv -f "$TMPFILE" "$TMPFILE.png"
+	echo "$TMPFILE.png"
+	exit
+fi
 
 twurl set default "$ACCOUNT"
 MEDIA_ID=`twurl -H "upload.twitter.com" -X POST "/1.1/media/upload.json" --file "$TMPFILE" --file-field "media" | jq -r '.media_id_string'`
