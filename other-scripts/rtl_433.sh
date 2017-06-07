@@ -1,9 +1,12 @@
-#!/bin/sh
+#!/bin/bash
 while true
 do
 	# Only a simple example. Adjust to your needs...
 	rtl_433 -R 50 -l 1 -g 50 -F json -T 500 -q \
-		| ism-catcher --live; sleep 10
+		| ism-catcher --live
+
+	if [[ ${PIPESTATUS[0]} -ne 0 ]]
+	then sleep 30; else sleep 10; fi
 done
 
 # Copy everything to a logfile: (don't forget to setup logrotate if required!)
