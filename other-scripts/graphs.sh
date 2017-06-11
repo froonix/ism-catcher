@@ -20,8 +20,8 @@ case ${1:-} in
 		;;
 
 	"week")
-		START=`date -d "- $OFFSET weeks last week monday 00:00:01" '+%s'`
-		END=`date -d "- $OFFSET weeks last week sunday 23:59:59" '+%s'`
+		START=`date -d "now - $OFFSET weeks - 6 days - $(date '+%u') days 00:00:01" '+%s'`
+		END=`date -d "$(date -d @$START '+%Y-%m-%d') + 6 days 23:59:59" '+%s'`
 		TITLE="(Woche $(date -d @$START '+%V / %Y'))"
 		COLOR="00CC00"
 
