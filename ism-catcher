@@ -585,7 +585,7 @@ class ISMDB
 		{
 			if($limit < 0)
 			{
-				$this->removePackets(-($c - abs($limit)));
+				$this->removePackets(($c - abs($limit)));
 			}
 			else
 			{
@@ -636,7 +636,6 @@ class ISMDB
 		{
 			$start = self::HEADERSIZE + (self::PACKETSIZE * $offset);
 		}
-
 
 		$oldsize = self::HEADERSIZE + (self::PACKETSIZE * $c);
 		$length = self::PACKETSIZE * abs($num);
