@@ -1,5 +1,7 @@
 /legacy
 
+is-catcher.*
+
 config.ini
 .ism.ini
 ism.ini
