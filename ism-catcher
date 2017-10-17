@@ -14,7 +14,7 @@ else if(php_sapi_name() != 'cli')
 
 set_error_handler('exception_error_handler');
 error_reporting(-1); setlocale(LC_ALL, 'C');
-$opt = getopt('hc:', ['help', 'config:', 'live', 'dump:']);
+$opt = getopt('hc:', ['help', 'config:', 'live', 'dump:', 'watch:']);
 
 if(isset($opt['h']) || isset($opt['help']))
 {
@@ -25,6 +25,8 @@ if(isset($opt['h']) || isset($opt['help']))
 	print("       Parse JSON from STDIN, one dataset per line!\n\n");
 	printf("Usage: %s [--config=<INI>] --dump=<ID>\n", $cmd);
 	print("       Dump packets of binary database <ID>.\n\n");
+	printf("Usage: %s [--config=<INI>] --watch=[<ID>, ...]\n", $cmd);
+	print("       Follow mode for single or multiple <ID>'s.\n\n");
 	printf("Usage: %s [--config=<INI>] [{autoconf|config}]\n", $cmd);
 	print("       Execute Munin plugin with optional arguments.\n\n");
 	print("=========================\n");
@@ -75,6 +77,11 @@ if(isset($opt['dump']))
 	$mode = 'dump';
 	$arg = $opt['dump'];
 }
+else if(isset($opt['watch']))
+{
+	$mode = 'watch';
+	$arg = $opt['watch'];
+}
 else if(isset($opt['live']))
 {
 	$mode = 'live';
@@ -121,6 +128,10 @@ abstract class ISM
 	const TEMPLATE_DB      = '%s/ism-%s.db';
 	const LOWBATT_WARNING  = 'LOW BATTERY';
 
+	const FOLLOW_SLEEP     = 60;
+	const FOLLOW_WIDTH     = 12;
+	const FOLLOW_DECIMALS  = 1;
+
 	// Bit identifiers
 	const FLAG_NONE        = 0;
 	const FLAG_LOWBATT     = 1;
@@ -146,6 +157,11 @@ abstract class ISM
 
 			case 'dump':
 				return self::dumpDB($arg);
+				break;
+
+			case 'watch':
+				$args = explode(',', $arg);
+				return self::watchDBs($args);
 				break;
 
 			case 'config':
@@ -470,6 +486,64 @@ abstract class ISM
 		}
 
 		return 0;
+	}
+
+	private static function watchDBs($ids)
+	{
+		if(!is_array($ids))
+		{
+			$ids = [$ids];
+		}
+
+		$header = '';
+		foreach($ids as &$id)
+		{
+			$id = (string) $id;
+			$db = self::openDB($id);
+
+			$_ = (strlen($id) >= self::FOLLOW_WIDTH) ? substr($id, 0, self::FOLLOW_WIDTH - 1) . '…' : $id;
+			$header .= str_pad(strtoupper($_), self::FOLLOW_WIDTH, ' ', STR_PAD_LEFT);
+
+			unset($db);
+		}
+		unset($id, $_);
+
+		print("\n" . str_repeat(' ', 8) . $header . "\n");
+		print(str_repeat('-', self::FOLLOW_WIDTH * count($ids) + 8) . "\n");
+		$last = microtime(true) - self::FOLLOW_SLEEP;
+
+		while(true)
+		{
+			$time = microtime(true);
+			printf(date('H:i', $time) . '   ');
+
+			foreach($ids as $id)
+			{
+				$db = self::openDB($id);
+				$data = $db->getPacket(-1);
+
+				if(!$last || $data[ISMDB::FIELD_TIME] > $last)
+				{
+					$value = number_format($data[ISMDB::FIELD_VALUE], self::FOLLOW_DECIMALS, '.', '');
+				}
+				else
+				{
+					$value = '-' . str_repeat(' ', self::FOLLOW_DECIMALS + 1);
+				}
+
+				print(str_pad($value, self::FOLLOW_WIDTH, ' ', STR_PAD_LEFT));
+				unset($db, $data, $value);
+			}
+
+			$last = $time;
+			print("\n");
+
+			$time -= microtime(true); $time *= 1.1;
+			usleep((self::FOLLOW_SLEEP + $time) * 1000000);
+		}
+		unset($id, $last, $time);
+
+		return 1;
 	}
 }
 
