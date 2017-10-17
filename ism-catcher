@@ -128,8 +128,9 @@ abstract class ISM
 	const TEMPLATE_DB      = '%s/ism-%s.db';
 	const LOWBATT_WARNING  = 'LOW BATTERY';
 
-	const FOLLOW_SLEEP     = 60;
-	const FOLLOW_WIDTH     = 12;
+	const FOLLOW_SLEEP     = 60; // seconds
+	const FOLLOW_HEADER    = 30; // times
+	const FOLLOW_WIDTH     = 12; // chars
 	const FOLLOW_DECIMALS  = 1;
 
 	// Bit identifiers
@@ -495,7 +496,9 @@ abstract class ISM
 			$ids = [$ids];
 		}
 
-		$header = '';
+		$strip = str_repeat('-', self::FOLLOW_WIDTH * count($ids) + 8);
+		$header = str_repeat(' ', 8);
+
 		foreach($ids as &$id)
 		{
 			$id = (string) $id;
@@ -508,9 +511,11 @@ abstract class ISM
 		}
 		unset($id, $_);
 
-		print("\n" . str_repeat(' ', 8) . $header . "\n");
-		print(str_repeat('-', self::FOLLOW_WIDTH * count($ids) + 8) . "\n");
+		print("\n" . $header . "\n");
+		print($strip . "\n");
+
 		$last = microtime(true) - self::FOLLOW_SLEEP;
+		$i = 0;
 
 		while(true)
 		{
@@ -537,6 +542,14 @@ abstract class ISM
 
 			$last = $time;
 			print("\n");
+
+			if(++$i == self::FOLLOW_HEADER)
+			{
+				print($strip  . "\n");
+				print($header . "\n");
+				print($strip  . "\n");
+				$i = 0;
+			}
 
 			$time -= microtime(true); $time *= 1.1;
 			usleep((self::FOLLOW_SLEEP + $time) * 1000000);
