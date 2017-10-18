@@ -505,7 +505,7 @@ abstract class ISM
 			$db = self::openDB($id);
 
 			$_ = (strlen($id) >= (self::FOLLOW_WIDTH - 3)) ? substr($id, 0, self::FOLLOW_WIDTH - 4) . '~' : $id;
-			$header .= str_pad(strtoupper($_), self::FOLLOW_WIDTH, ' ', STR_PAD_LEFT);
+			$header .= str_pad(strtoupper($_), self::FOLLOW_WIDTH, ' ', STR_PAD_LEFT); // <-- NOT UTF-8 COMPATIBLE!
 
 			unset($db);
 		}
