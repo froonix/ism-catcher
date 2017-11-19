@@ -80,7 +80,7 @@ fi
 TMPFILE=`tempfile`
 rrdtool graph "$TMPFILE" --imgformat PNG --width "$WIDTH" --height "$HEIGHT" \
   --start "$START" --end "$END" --title "$HEADER" -W "$FOOTER" --vertical-label '°C' --border 0 \
-  --disable-rrdtool-tag --full-size-mode --slope-mode --base 1000 -l -15 -u 45 \
+  --disable-rrdtool-tag --full-size-mode --slope-mode --base 1000 -l -15 -u 45 -X 0 \
   --font 'DEFAULT:0:DejaVuSans,DejaVu Sans,DejaVu LGC Sans,Bitstream Vera Sans' \
   --font 'LEGEND:7:DejaVuSansMono,DejaVu Sans Mono,DejaVu LGC Sans Mono,Bitstream Vera Sans Mono,monospace' \
   --color 'BACK#F0F0F0' --color 'FRAME#F0F0F0' --color 'CANVAS#FFFFFF' --color 'FONT#666666' --color 'AXIS#CFD6F8' --color 'ARROW#CFD6F8' \
@@ -89,9 +89,9 @@ rrdtool graph "$TMPFILE" --imgformat PNG --width "$WIDTH" --height "$HEIGHT" \
     'DEF:min=/var/lib/munin/CATEGORY/HOSTNAME-PLUGIN-FIELD-g.rrd:42:MIN' \
     'DEF:avg=/var/lib/munin/CATEGORY/HOSTNAME-PLUGIN-FIELD-g.rrd:42:AVERAGE' \
     'LINE1:0#BEBEBE' "LINE3:avg#${COLOR}:${FIELD}" \
-    'GPRINT:min:MIN:%.2lf%s' \
-    'GPRINT:avg:AVERAGE:%.2lf%s' \
-    'GPRINT:max:MAX:%.2lf%s\j' \
+    'GPRINT:min:MIN:%.2lf' \
+    'GPRINT:avg:AVERAGE:%.2lf' \
+    'GPRINT:max:MAX:%.2lf\j' \
     'COMMENT:\r' >/dev/null
 
 if [[ $GRAPH -eq 1 ]]
