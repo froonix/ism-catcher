@@ -1,6 +1,6 @@
 #!/bin/bash
 set -euf -o pipefail
-LC_NUMERIC=C
+LC_ALL=C; LANG=C
 
 START=`date -d "$(date -d '- 1 hour' '+%Y-%m-%d %H:00:00')" '+%s'`
 END=`date -d "$(date -d '- 1 hour' '+%Y-%m-%d %H:59:59')" '+%s'`
