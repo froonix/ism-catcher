@@ -616,10 +616,10 @@ abstract class ISM
 			$message[] = '';
 			$message[] = 'The batteries should be replaced ASAP. Low battery results in bad signal power.';
 
-			if(!empty(self::$ini[$section]['sid']))
+			if(!empty(self::$ini[$section]['sid']) || !empty(self::$ini[$section]['id']))
 			{
 				$message[] = '';
-				$message[] = 'Please do not forget to update the «sid» value at INI file.';
+				$message[] = 'Please do not forget to update the (S)ID value at INI file.';
 				$message[] = 'This step is required for many sensors with reset buttons.';
 			}
 
