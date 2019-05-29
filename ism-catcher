@@ -455,13 +455,25 @@ abstract class ISM
 					ISMDB::FIELD_FLAGS => self::FLAG_NONE,
 				];
 
-				if(isset($json['battery']) && strtoupper($json['battery']) == 'LOW')
-				{
-					$item[ISMDB::FIELD_FLAGS] |= self::FLAG_LOWBATT;
-				}
-
 				$db = self::openDB($section, false, true);
 				$db->cleanUp(-self::$ini['dbcleanup']);
+
+				if(isset($json['battery']) && strtoupper($json['battery']) == 'LOW')
+				{
+					if(!$db->getFlag(ISMDB::FLAG_LOWBATT))
+					{
+						$db->enableFlag(ISMDB::FLAG_LOWBATT);
+						self::sendMail($section, true);
+					}
+
+					$item[ISMDB::FIELD_FLAGS] |= self::FLAG_LOWBATT;
+				}
+				else if($db->getFlag(ISMDB::FLAG_LOWBATT))
+				{
+					$db->disableFlag(ISMDB::FLAG_LOWBATT);
+					self::sendMail($section, false);
+				}
+
 				$db->putPacket($item);
 				unset($db, $item);
 
@@ -530,6 +542,11 @@ abstract class ISM
 				if(!$last || $data[ISMDB::FIELD_TIME] > $last)
 				{
 					$value = number_format($data[ISMDB::FIELD_VALUE], self::FOLLOW_DECIMALS, '.', '');
+
+					if($data[ISMDB::FIELD_FLAGS] & self::FLAG_LOWBATT)
+					{
+						$value = sprintf('[!] %s', $value);
+					}
 				}
 				else
 				{
@@ -558,6 +575,68 @@ abstract class ISM
 
 		return 1;
 	}
+
+	private static function sendMail($section, $status)
+	{
+		$recipient = null;
+
+		if(isset(self::$ini[$section]['LOWBATT']))
+		{
+			$recipient = self::$ini[$section]['LOWBATT'];
+		}
+		else if(isset(self::$ini['lowbatt']))
+		{
+			$recipient = self::$ini['lowbatt'];
+		}
+
+		if(!$recipient)
+		{
+			return null;
+		}
+
+		$message = $header = [];
+		$hostname = gethostname();
+		$hostname = !$hostname ? 'localhost' : $hostname;
+		$username = posix_getpwuid(posix_geteuid())['name'];
+
+		if($recipient === '$USER')
+		{
+			$recipient = sprintf('%s@%s', $username, $hostname);
+		}
+
+		$header[] = sprintf('From: ISM <%s@%s>', $username, $hostname);
+		$header[] = 'Content-type: text/plain; charset=UTF-8';
+		$header[] = 'MIME-Version: 1.0';
+
+		if($status)
+		{
+			$subject = sprintf('Low Battery WARNING: %s', strtoupper($section));
+
+			$message[] = 'Bad news for you! :-(';
+			$message[] = '';
+			$message[] = 'The batteries should be replaced ASAP. Low battery results in bad signal power.';
+
+			if(!empty(self::$ini[$section]['sid']))
+			{
+				$message[] = '';
+				$message[] = 'Please do not forget to update the «sid» value at INI file.';
+				$message[] = 'This step is required for many sensors with reset buttons.';
+			}
+
+			$message[] = '';
+			$message[] = 'This is a one-time warning message until you replace the batteries.';
+		}
+		else
+		{
+			$subject = sprintf('Battery OK: %s', strtoupper($section));
+
+			$message[] = 'Congratulations!';
+			$message[] = '';
+			$message[] = 'The battery is good to go again... :-)';
+		}
+
+		return mail($recipient, '=?UTF-8?B?' . base64_encode($subject) . '?=', implode("\r\n", $message), implode("\r\n", $header));
+	}
 }
 
 # -------------------------------------------------------------------- #
@@ -570,23 +649,27 @@ abstract class ISM
 class ISMDB
 {
 	// Database format
-	const DBVERSION   =   1;
-	const HEADERSIZE  =   2;
-	const PACKETSIZE  =  10;
+	const DBVERSION        =   1;
+	const HEADERSIZE       =   2;
+	const PACKETSIZE       =  10;
+
+	// Bit identifiers
+	const FLAG_NONE        = 0;
+	const FLAG_LOWBATT     = 1;
 
 	// Decimal precision
-	const DECIMALS    =   3;
+	const DECIMALS         =   3;
 
 	// Data array keys
-	const FIELD_FLAGS = 0;
-	const FIELD_TIME  = 1;
-	const FIELD_VALUE = 2;
+	const FIELD_FLAGS      = 0;
+	const FIELD_TIME       = 1;
+	const FIELD_VALUE      = 2;
 
-	private $ro      = null;
-	private $handle  = null;
-	private $init    = false;
-	private $version = self::DBVERSION;
-	private $flags   = 0;
+	private $ro            = null;
+	private $handle        = null;
+	private $init          = false;
+	private $version       = self::DBVERSION;
+	private $flags         = 0;
 
 	public function __construct($file, $readonly = true, $create = true)
 	{
@@ -627,10 +710,10 @@ class ISMDB
 		{
 			throw new Exception(sprintf('Unsupported DB version: %d', $this->version));
 		}
-		else if($this->flags)
-		{
-			throw new Exception(sprintf('Unsupported flags: 0x%02X', $this->flags));
-		}
+#		else if($this->flags)
+#		{
+#			throw new Exception(sprintf('Unsupported flags: 0x%02X', $this->flags));
+#		}
 
 		try
 		{
@@ -664,6 +747,46 @@ class ISMDB
 		{
 			return;
 		}
+	}
+
+	public function getFlags()
+	{
+		return $this->flags;
+	}
+
+	public function getFlag($flag)
+	{
+		$flag = abs((int) $flag);
+
+		return (($this->flags & $flag) === $flag);
+	}
+
+	public function setFlag($flag, $value)
+	{
+		$flag = abs((int) $flag);
+		$value = (bool) $value;
+
+		if($value)
+		{
+			$this->flags |= $flag;
+		}
+		else
+		{
+			$this->flags &= ~ $flag;
+		}
+
+		$this->seek();
+		$this->write($this->buildHeader());
+	}
+
+	public function enableFlag($flag)
+	{
+		return $this->setFlag($flag, true);
+	}
+
+	public function disableFlag($flag)
+	{
+		return $this->setFlag($flag, false);
 	}
 
 	public function cleanUp($limit = 0)
