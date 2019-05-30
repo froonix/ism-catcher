@@ -463,7 +463,7 @@ abstract class ISM
 					if(!$db->getFlag(ISMDB::FLAG_LOWBATT))
 					{
 						$db->enableFlag(ISMDB::FLAG_LOWBATT);
-						self::sendMail($section, true);
+						self::sendMail($db, $section, true);
 					}
 
 					$item[ISMDB::FIELD_FLAGS] |= self::FLAG_LOWBATT;
@@ -471,7 +471,7 @@ abstract class ISM
 				else if($db->getFlag(ISMDB::FLAG_LOWBATT))
 				{
 					$db->disableFlag(ISMDB::FLAG_LOWBATT);
-					self::sendMail($section, false);
+					self::sendMail($db, $section, false);
 				}
 
 				$db->putPacket($item);
@@ -491,6 +491,8 @@ abstract class ISM
 	private static function dumpDB($id)
 	{
 		$db = self::openDB($id);
+
+		printf("DB: version=0x%02X flags=0x%02X\n\n", $db->version(), $db->getFlags());
 
 		for($i = 0; $i < $db->getPacketCount(); $i++)
 		{
@@ -576,7 +578,7 @@ abstract class ISM
 		return 1;
 	}
 
-	private static function sendMail($section, $status)
+	private static function sendMail(&$db, $section, $status)
 	{
 		$recipient = null;
 
@@ -589,7 +591,7 @@ abstract class ISM
 			$recipient = self::$ini['lowbatt'];
 		}
 
-		if(!$recipient)
+		if(!$recipient /*|| $db->created()*/)
 		{
 			return null;
 		}
@@ -668,6 +670,7 @@ class ISMDB
 	private $ro            = null;
 	private $handle        = null;
 	private $init          = false;
+	private $created       = false;
 	private $version       = self::DBVERSION;
 	private $flags         = 0;
 
@@ -681,7 +684,7 @@ class ISMDB
 			}
 
 			file_put_contents($file, $this->buildHeader());
-			clearstatcache(false, $file);
+			$this->created = true; clearstatcache(false, $file);
 		}
 
 		if($readonly)
@@ -747,6 +750,16 @@ class ISMDB
 		{
 			return;
 		}
+	}
+
+	public function version()
+	{
+		return $this->version;
+	}
+
+	public function created()
+	{
+		return $this->created;
 	}
 
 	public function getFlags()
