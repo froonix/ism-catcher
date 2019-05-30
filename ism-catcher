@@ -192,12 +192,17 @@ abstract class ISM
 
 	private static function openDB($id, $readonly = true, $create = false)
 	{
+		return new ISMDB(self::getPath($id), $readonly, $create);
+	}
+
+	private static function getPath($id)
+	{
 		if(!isset(self::$ini['datadir']))
 		{
 			self::$ini['datadir'] = sys_get_temp_dir();
 		}
 
-		return new ISMDB(sprintf(self::TEMPLATE_DB, self::$ini['datadir'], md5(strtolower($id))), $readonly, $create);
+		return sprintf(self::TEMPLATE_DB, self::$ini['datadir'], md5(strtolower($id)));
 	}
 
 	private static function cleanField($str)
@@ -492,7 +497,9 @@ abstract class ISM
 	{
 		$db = self::openDB($id);
 
-		printf("DB: version=0x%02X flags=0x%02X\n\n", $db->version(), $db->getFlags());
+		printf("DB: filename=%s\n\n", self::getPath($id));
+		printf("    version=0x%02X flags=0x%02X\n\n", $db->version(), $db->getFlags());
+
 
 		for($i = 0; $i < $db->getPacketCount(); $i++)
 		{
