@@ -775,8 +775,7 @@ class ISMDB
 			$this->flags &= ~ $flag;
 		}
 
-		$this->seek();
-		$this->write($this->buildHeader());
+		$this->writeHeader();
 	}
 
 	public function enableFlag($flag)
@@ -976,6 +975,12 @@ class ISMDB
 		$this->seek();
 		$_ = self::decodeFlags($this->read(self::HEADERSIZE));
 		$this->version = $_[0]; $this->flags = $_[1];
+	}
+
+	private function writeHeader()
+	{
+		$this->seek();
+		$this->write($this->buildHeader());
 	}
 
 	private function buildHeader()
