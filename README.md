@@ -23,7 +23,6 @@ See: `other-scripts/rtl_433.sh`
 cp -vn config/sample.ini ~/.ism.ini
 editor ~/.ism.ini
 
-
 # Setup plugin configuration...
 cp -vn plugin-conf.d/ism /etc/munin/plugin-conf.d/
 editor /etc/munin/plugin-conf.d/ism
