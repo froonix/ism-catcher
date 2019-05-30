@@ -497,7 +497,7 @@ abstract class ISM
 	{
 		$db = self::openDB($id);
 
-		printf("DB: filename=%s\n\n", self::getPath($id));
+		printf("DB: filename=%s\n", self::getPath($id));
 		printf("    version=0x%02X flags=0x%02X\n\n", $db->version(), $db->getFlags());
 
 
