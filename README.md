@@ -41,7 +41,7 @@ munin-run ism config
 munin-run ism
 
 # Restart daemon...
-service munin-node restart
+systemctl restart --no-block munin-node
 ```
 
 
