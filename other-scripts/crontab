@@ -1,1 +1,1 @@
-@reboot ~/rtl_433.sh
+@reboot ~/ism-catcher/other-scripts/run.sh init

@@ -14,7 +14,7 @@ Munin plugin and other stuff for [rtl_433][1].
 
 
 ## Data Aggregation
-See: `other-scripts/rtl_433.sh`
+See: `other-scripts/run.sh` and `other-scripts/legacy/rtl_433.sh`
 
 
 ## Plugin Installation
