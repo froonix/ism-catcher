@@ -500,7 +500,6 @@ abstract class ISM
 		printf("DB: filename=%s\n", self::getPath($id));
 		printf("    version=0x%02X flags=0x%02X\n\n", $db->version(), $db->getFlags());
 
-
 		for($i = 0; $i < $db->getPacketCount(); $i++)
 		{
 			$data = $db->getPacketByIndex($i);
