@@ -1,1 +1,1 @@
-@reboot <localuser> ~/rtl_433.sh
+@reboot ~/rtl_433.sh
