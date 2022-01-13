@@ -1,6 +1,10 @@
 # ism-catcher
 Munin plugin and other stuff for [rtl_433][1].
 
+This repository is still actively maintained! I'm using this script non-stop since many years. (PHP 5.5 - 7.4)
+
+There're no real new commits for the `ism-catcher` script because everything works as expected.
+
 
 ## Hardware Requirements
 * 24/7 running GNU/Linux system with USB port
@@ -14,7 +18,9 @@ Munin plugin and other stuff for [rtl_433][1].
 
 
 ## Data Aggregation
-See: `other-scripts/run.sh` and `other-scripts/legacy/rtl_433.sh`
+See: `other-scripts/run.sh` & `other-scripts/legacy/rtl_433.sh`
+
+Examples for multiple (split or aggregated) graphs are available at the [wiki](https://github.com/froonix/ism-catcher/wiki).
 
 
 ## Plugin Installation
@@ -35,7 +41,7 @@ munin-run ism config
 munin-run ism
 
 # Restart daemon...
-service munin-node restart
+systemctl restart --no-block munin-node
 ```
 
 
