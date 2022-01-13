@@ -6,9 +6,23 @@ mode=${1:-}
 shift
 
 case "$mode" in
+	restart)
+		"$0" kill "$@"
+		"$0" init "$@"
+		;;
+
+	kill)
+			for dev in "${devices[@]}"
+			do
+				[[ -z "$*" || " $* " == *" $dev "* ]] && \
+				screen -S "ism-$dev" -X quit
+			done
+		;;
+
 	init)
 		for dev in "${devices[@]}"
 		do
+			[[ -z "$*" || " $* " == *" $dev "* ]] && \
 			screen -S "ism-$dev" -d -m -- "$0" run "$dev"
 		done
 		;;
@@ -22,7 +36,7 @@ case "$mode" in
 		;;
 
 	*)
-		echo "Usage: $0 init" >&2
+		echo "Usage: $0 init|restart|kill [DEV ...]" >&2
 		echo "       $0 run [DEV]" >&2
 		exit 1
 		;;
