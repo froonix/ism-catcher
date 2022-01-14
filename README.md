@@ -1,9 +1,29 @@
 # ism-catcher
 Munin plugin and other stuff for [rtl_433][1].
 
-This repository is still actively maintained! I'm using this script non-stop since many years. (PHP 5.5 - 7.4)
+```
+Program to parse the output of rtl_433.
+It's designed to work as Munin plugin.
 
-There're no real new commits for the `ism-catcher` script because everything works as expected.
+Usage: ism-catcher [--config=<INI>] --live
+       Parse JSON from STDIN, one dataset per line!
+
+Usage: ism-catcher [--config=<INI>] --dump=<ID>
+       Dump packets of binary database <ID>.
+
+Usage: ism-catcher [--config=<INI>] --watch=[<ID>, ...]
+       Follow mode for single or multiple <ID>'s.
+
+Usage: ism-catcher [--config=<INI>] [{autoconf|config}]
+       Execute Munin plugin with optional arguments.
+
+=========================
+ Supported ENV variables 
+=========================
+
+ * hostname = virtual hostname for munin
+ * ini_file = path to configuration file
+```
 
 
 ## Hardware Requirements
@@ -15,6 +35,7 @@ There're no real new commits for the `ism-catcher` script because everything wor
 ## Software Requirements
 * Munin master/node setup (+ Webserver for Munin output)
 * [rtl_433][1] installation (and JSON-enabled device)
+* PHP ≥ 5.5 (with JSON support)
 
 
 ## Data Aggregation
