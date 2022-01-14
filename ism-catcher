@@ -188,6 +188,35 @@ abstract class ISM
 		{
 			throw new Exception(sprintf('Could not open or parse INI file %s', self::$cfg));
 		}
+
+		$home = isset($_SERVER['HOME']) ? $_SERVER['HOME'] : '';
+
+		if(!isset(self::$ini['datadir']))
+		{
+			self::$ini['datadir'] = sys_get_temp_dir();
+		}
+		else
+		{
+			self::$ini['datadir'] = str_replace('$HOME', $home, self::$ini['datadir']);
+		}
+
+		if(empty(self::$ini['unknown']))
+		{
+			self::$ini['unknown'] = null;
+		}
+		else
+		{
+			self::$ini['unknown'] = str_replace('$HOME', $home, self::$ini['unknown']);
+		}
+
+		if(!isset(self::$ini['dbcleanup']))
+		{
+			self::$ini['dbcleanup'] = self::PACKET_LIMIT;
+		}
+		else
+		{
+			self::$ini['dbcleanup'] = abs((int) self::$ini['dbcleanup']);
+		}
 	}
 
 	private static function openDB($id, $readonly = true, $create = false)
@@ -197,11 +226,6 @@ abstract class ISM
 
 	private static function getPath($id)
 	{
-		if(!isset(self::$ini['datadir']))
-		{
-			self::$ini['datadir'] = sys_get_temp_dir();
-		}
-
 		return sprintf(self::TEMPLATE_DB, self::$ini['datadir'], md5(strtolower($id)));
 	}
 
@@ -382,15 +406,6 @@ abstract class ISM
 
 	private static function procRTL($handle = STDIN)
 	{
-		if(!isset(self::$ini['dbcleanup']))
-		{
-			self::$ini['dbcleanup'] = self::PACKET_LIMIT;
-		}
-		else
-		{
-			self::$ini['dbcleanup'] = abs((int) self::$ini['dbcleanup']);
-		}
-
 		while(!feof($handle))
 		{
 			if(($line = fgets($handle, self::BUFFER_SIZE)) === false)
@@ -428,6 +443,7 @@ abstract class ISM
 					continue;
 				}
 
+				$match = false;
 				foreach($data as $key => $value)
 				{
 					if(preg_match('/^[a-z0-9_]+$/', $key))
@@ -439,6 +455,7 @@ abstract class ISM
 					}
 				}
 				unset($key, $value);
+				$match = true;
 
 				if(!isset($data['SOURCE']))
 				{
@@ -488,6 +505,11 @@ abstract class ISM
 				}
 			}
 			unset($section, $data);
+
+			if(!$match && self::$ini['unknown'] !== null)
+			{
+				file_put_contents(self::$ini['unknown'], $line . "\n", FILE_APPEND);
+			}
 		}
 
 		return 0;
