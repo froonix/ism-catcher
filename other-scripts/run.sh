@@ -1,5 +1,5 @@
 #!/bin/bash
-args=(-M level -g 20 -Y autolevel)
+args=(-Y autolevel)
 devices=(0)
 
 mode=${1:-}
