@@ -480,7 +480,7 @@ abstract class ISM
 				$db = self::openDB($section, false, true);
 				$db->cleanUp(-self::$ini['dbcleanup']);
 
-				if(isset($json['battery']) && strtoupper($json['battery']) == 'LOW')
+				if((isset($json['battery']) && strtoupper($json['battery']) == 'LOW') || (isset($json['battery_ok']) && !$json['battery_ok']))
 				{
 					if(!$db->getFlag(ISMDB::FLAG_LOWBATT))
 					{
