@@ -380,17 +380,74 @@ abstract class ISM
 
 				if($db->getPacketCount())
 				{
-					$item = $db->getPacket(-1);
+					$time  = time();
+					$align = null;
 
-					if($item[ISMDB::FIELD_TIME] < (intval(time() / self::$ini['interval']) - 1) * self::$ini['interval'])
+					if(isset(self::$ini[$section]['ALIGN']))
 					{
-						continue;
+						$align = strtolower(self::$ini[$section]['ALIGN']);
+					}
+					else if(isset(self::$ini['align']))
+					{
+						$align = strtolower(self::$ini['align']);
 					}
 
-					self::outputLine('value', $item[ISMDB::FIELD_VALUE], $section);
+					if($align !== null && in_array($align, ['min', 'avg', 'max'], true))
+					{
+						$values = [];
+						$c = -$db->getPacketCount();
+						for($i = -1; $i >= $c; $i--)
+						{
+							$item = $db->getPacket($i);
 
-					// TODO: Implement INI switch to output last update time?
-					#self::outputLine('extinfo', date('c', $item[ISMDB::FIELD_TIME]), $section);
+							if($item[ISMDB::FIELD_TIME] < (intval($time / self::$ini['interval']) - 1) * self::$ini['interval'])
+							{
+								break;
+							}
+
+							$values[] = $item[ISMDB::FIELD_VALUE];
+						}
+
+						if(!($c = count($values)))
+						{
+							continue;
+						}
+
+						switch($align)
+						{
+							case 'min':
+								$value = min($values);
+								break;
+
+							case 'avg':
+								$value = array_sum($values) / $c;
+								break;
+
+							case 'max':
+								$value = max($values);
+								break;
+
+							default:
+								throw new InvalidArgumentException($align);
+						}
+						unset($values);
+					}
+					else
+					{
+						$item = $db->getPacket(-1);
+
+						if($item[ISMDB::FIELD_TIME] < (intval($time / self::$ini['interval']) - 1) * self::$ini['interval'])
+						{
+							continue;
+						}
+
+						$value = $item[ISMDB::FIELD_VALUE];
+
+						// TODO: Implement INI switch to output last update time?
+						#self::outputLine('extinfo', date('c', $item[ISMDB::FIELD_TIME]), $section);
+					}
+
+					self::outputLine('value', $value, $section);
 
 					if($item[ISMDB::FIELD_FLAGS] & self::FLAG_LOWBATT)
 					{
