@@ -28,7 +28,7 @@ Usage: ism-catcher [--config=<INI>] [{autoconf|config}]
 
 ## Hardware Requirements
 * 24/7 running GNU/Linux system with USB port
-* DVB-T dongle with [compatible RTL2832(U)][2] chipset
+* DVB-T dongle with compatible RTL2832(U) chipset
 * Compatible wireless sensor (e.g. `THN128` or `THR128`)
 
 
@@ -67,4 +67,3 @@ systemctl restart --no-block munin-node
 
 
 [1]: https://github.com/merbanan/rtl_433
-[2]: http://amzn.to/2qIxh9n
