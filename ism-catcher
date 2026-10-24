@@ -619,7 +619,7 @@ abstract class ISM
 		while(true)
 		{
 			$time = microtime(true);
-			printf(date('H:i', $time) . '   ');
+			printf(date('H:i', (int) $time) . '   ');
 
 			foreach($ids as $id)
 			{
@@ -656,7 +656,7 @@ abstract class ISM
 			}
 
 			$time -= microtime(true); $time *= 1.1;
-			usleep((self::FOLLOW_SLEEP + $time) * 1000000);
+			usleep((self::FOLLOW_SLEEP + (int) $time) * 1000000);
 		}
 		unset($id, $last, $time);
 
